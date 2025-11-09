@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const predictRoutes = require('./routes/predict');
 require('dotenv').config();
 
 const app = express();
@@ -16,6 +17,8 @@ app.use('/api/teachers', require('./routes/teachers'));
 app.use('/api/enrollments', require('./routes/enrollments'));
 app.use('/api/departments', require('./routes/departments'));
 app.use('/api/classrooms', require('./routes/classrooms'));
+app.use('/api/predict', predictRoutes);
+
 
 // Health check
 app.get('/', (req, res) => {

@@ -1,23 +1,27 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { apiClient, PredictResponse, Student } from '../api';
+import {
+  RadialBarChart,
+  RadialBar,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  Tooltip,
+  Cell,
+} from 'recharts';
 
-const formatPercentage = (value: number) => `${(value * 100).toFixed(1)}%`;
+const formatPercentage = (v: number) => `${(v * 100).toFixed(1)}%`;
 
-const probabilityColor = (probability: number, threshold: number) => {
-  if (probability >= threshold + 0.1) {
-    return 'text-green-700';
-  }
-  if (Math.abs(probability - threshold) <= 0.05) {
-    return 'text-orange-600';
-  }
-  if (probability < 0.2) {
-    return 'text-red-700';
-  }
-  return 'text-gray-900';
+type FormData = {
+  attendance: string;
+  marks: string;
+  internal_score: string;
+  final_exam_score: string;
 };
 
-function Predictor() {
-  const [formData, setFormData] = useState({
+function Predictor(): JSX.Element {
+  const [formData, setFormData] = useState<FormData>({
     attendance: '',
     marks: '',
     internal_score: '',
@@ -36,45 +40,32 @@ function Predictor() {
       setStudentsLoading(true);
       try {
         const response = await apiClient.getStudents(1, 100);
-        setStudents(response.items);
+        setStudents(response.items || []);
       } catch (err) {
-        console.warn('Failed to load students for predictor', err);
+        console.warn('Failed to load students', err);
       } finally {
         setStudentsLoading(false);
       }
     };
-
     fetchStudents();
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((p) => ({ ...p, [name]: value }));
   };
 
   const validateForm = (): boolean => {
-    const attendance = parseFloat(formData.attendance);
-    const marks = parseFloat(formData.marks);
-    const internal_score = parseFloat(formData.internal_score);
-
-    if (isNaN(attendance) || attendance < 0 || attendance > 100) {
-      setError('Attendance must be between 0 and 100');
-      return false;
-    }
-    if (isNaN(marks) || marks < 0 || marks > 100) {
-      setError('Marks must be between 0 and 100');
-      return false;
-    }
-    if (isNaN(internal_score) || internal_score < 0 || internal_score > 100) {
-      setError('Internal score must be between 0 and 100');
-      return false;
-    }
+    const a = parseFloat(formData.attendance);
+    const m = parseFloat(formData.marks);
+    const i = parseFloat(formData.internal_score);
+    if (isNaN(a) || a < 0 || a > 100) return setError('Attendance must be 0–100'), false;
+    if (isNaN(m) || m < 0 || m > 100) return setError('Marks must be 0–100'), false;
+    if (isNaN(i) || i < 0 || i > 100) return setError('Internal score must be 0–100'), false;
     if (formData.final_exam_score) {
-      const final_exam_score = parseFloat(formData.final_exam_score);
-      if (isNaN(final_exam_score) || final_exam_score < 0 || final_exam_score > 100) {
-        setError('Final exam score must be between 0 and 100');
-        return false;
-      }
+      const f = parseFloat(formData.final_exam_score);
+      if (isNaN(f) || f < 0 || f > 100)
+        return setError('Final exam score must be 0–100'), false;
     }
     return true;
   };
@@ -83,14 +74,10 @@ function Predictor() {
     e.preventDefault();
     setError(null);
     setResult(null);
-
-    if (!validateForm()) {
-      return;
-    }
-
+    if (!validateForm()) return;
     setLoading(true);
     try {
-      const response = await apiClient.predict({
+      const res = await apiClient.predict({
         student_id: selectedStudentId === '' ? undefined : Number(selectedStudentId),
         attendance: parseFloat(formData.attendance),
         marks: parseFloat(formData.marks),
@@ -99,7 +86,7 @@ function Predictor() {
           ? parseFloat(formData.final_exam_score)
           : undefined,
       });
-      setResult(response);
+      setResult(res);
       setSimulatedProb(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -108,157 +95,146 @@ function Predictor() {
     }
   };
 
-  const renderResult = (prediction: PredictResponse) => {
-    const baseProb = simulatedProb ?? prediction.probability;
-    const nearThreshold = Math.abs(baseProb - prediction.threshold_used) <= 0.05;
-    const textColor = probabilityColor(baseProb, prediction.threshold_used);
-    const passPrediction = (simulatedProb ?? prediction.probability) >= prediction.threshold_used;
-    const margin = baseProb - prediction.threshold_used;
-    const confidenceLabel = (() => {
-      if (passPrediction) {
-        if (margin >= 0.2) return 'High confidence in PASS (well above threshold).';
-        if (margin >= 0.1) return 'Moderate confidence in PASS.';
-        if (margin >= 0) return 'Low confidence: just over the threshold.';
-        return 'Prediction below threshold.';
-      }
-
-      if (prediction.probability <= 0.2) return 'High confidence in FAIL (probability very low).';
-      if (prediction.probability <= prediction.threshold_used - 0.1) return 'Moderate confidence in FAIL.';
-      return 'Low confidence: close to threshold.';
-    })();
-
-    return (
-      <div className="mt-6 p-4 bg-indigo-50 border border-indigo-200 rounded-md space-y-4">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Prediction Result</h3>
-          <div className="space-y-2">
-            <div className="flex items-center">
-              <span className="text-sm font-medium text-gray-700">Predicted Result: </span>
-              <span
-                className={`ml-2 px-2 py-1 rounded text-sm font-semibold ${
-                  passPrediction ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}
-              >
-                {passPrediction ? 'PASS' : 'FAIL'}
-              </span>
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
-              <span className="text-sm font-medium text-gray-700">Probability of Passing:</span>
-              <span className={`text-sm font-semibold ${textColor}`}>
-                {formatPercentage(baseProb)}
-              </span>
-            </div>
-            <div className="text-xs text-gray-600">
-              Decision threshold: <span className="font-mono">{formatPercentage(prediction.threshold_used)}</span>
-            </div>
-            <div className="text-sm text-gray-700">{confidenceLabel}</div>
-          </div>
-        </div>
-
-        {nearThreshold && (
-          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800">
-            Probability is close to the decision threshold. Consider reviewing additional context before finalizing.
-          </div>
-        )}
-
-        {prediction.suspicious_input && (
-          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm text-yellow-800 space-y-1">
-            <p className="font-semibold">Suspicious input detected:</p>
-            {prediction.suspicious_reasons?.map((reason, idx) => (
-              <p key={idx}>• {reason}</p>
-            ))}
-          </div>
-        )}
-
-        <div className="bg-white border border-indigo-200 rounded-md p-4">
-          <h4 className="text-sm font-semibold text-gray-900 mb-2">Explanation</h4>
-          <div className="space-y-3">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Top Reasons</p>
-              <ul className="space-y-1">
-                {prediction.explanation.top_reasons.map((reason, idx) => (
-                  <li key={idx} className="text-sm text-gray-700">
-                    <span className="font-medium text-gray-900">{reason.feature}</span>{' '}
-                    {reason.effect === 'increase'
-                      ? 'increased'
-                      : reason.effect === 'decrease'
-                      ? 'decreased'
-                      : 'did not change'}{' '}
-                    the pass probability (contribution {reason.contribution.toFixed(2)}).
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-gray-500 mb-1">Feature Importance</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-                {Object.entries(prediction.explanation.feature_importances).map(([feature, importance]) => (
-                  <div
-                    key={feature}
-                    className="bg-indigo-100 text-indigo-800 rounded px-2 py-1 flex items-center justify-between"
-                  >
-                    <span className="font-medium">{feature}</span>
-                    <span>{(importance * 100).toFixed(0)}%</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  const neonColor = (p: number, t: number) => {
+    if (p >= t + 0.15) return '#00F5A0';
+    if (p >= t) return '#7CFFFB';
+    if (p >= t - 0.1) return '#FFD166';
+    return '#FF6B6B';
   };
 
-  const renderFeedback = (prediction: PredictResponse) => {
-    if (!prediction.feedback || prediction.feedback.length === 0) return null;
-
-    const title = prediction.predicted_result === 1
-      ? 'Feedback & Improvements (increase confidence)'
-      : 'Feedback & Improvements (raise pass probability)';
-
-    const gainColor = (gain: number) => {
-      if (gain >= 0.10) return 'text-green-700';
-      if (gain >= 0.05) return 'text-orange-600';
-      return 'text-gray-700';
-    };
+  const renderResult = (prediction: PredictResponse) => {
+    const prob = simulatedProb ?? prediction.probability;
+    const pass = prob >= prediction.threshold_used;
+    const neon = neonColor(prob, prediction.threshold_used);
+    const gauge = [
+      { name: 'prob', value: Math.round(prob * 100) },
+      { name: 'rest', value: Math.round((1 - prob) * 100) },
+    ];
+    const features = Object.entries(prediction.explanation.feature_importances || {});
+    const barData = features.map(([k, v]) => ({ feature: k, value: (v as number) * 100 }));
 
     return (
-      <div className="mt-4 p-4 bg-white border border-gray-200 rounded-md">
-        <h4 className="text-md font-semibold text-gray-900 mb-3">{title}</h4>
-        {prediction.feedback_paragraph && (
-          <p className="text-sm text-gray-800 mb-4 leading-6">{prediction.feedback_paragraph}</p>
-        )}
-        <div className="space-y-3">
-          {prediction.feedback.map((s, idx) => (
-            <div key={idx} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b last:border-b-0 pb-2">
-              <div className="space-y-1">
-                <div className="text-sm font-medium text-gray-900">
-                  {s.feature}: {s.suggested_change}
-                </div>
-                <div className="text-xs text-gray-600">{s.explanation}</div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="text-sm">
-                  <span className={`font-semibold ${gainColor(s.estimated_probability_gain)}`}>
-                    +{formatPercentage(s.estimated_probability_gain)}
-                  </span>
-                  <span className="text-gray-500"> → {formatPercentage(s.new_probability_estimate)}</span>
-                </div>
-                <button
-                  type="button"
-                  className="px-3 py-1 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700"
-                  onClick={() => setSimulatedProb(s.new_probability_estimate)}
-                  title="Simulate suggestion"
+      <div className="mt-6 space-y-8">
+        {/* Summary */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="glass-card">
+            <h3 className="card-title">Prediction Summary</h3>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-white/70">Predicted Result</p>
+                <p
+                  className={`mt-2 px-3 py-1 rounded-full text-sm font-semibold ${
+                    pass ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
+                  }`}
                 >
-                  Simulate
-                </button>
+                  {pass ? 'PASS' : 'FAIL'}
+                </p>
+                <p className="mt-2 text-xs text-white/70">
+                  Probability: {formatPercentage(prob)} (Threshold:{' '}
+                  {formatPercentage(prediction.threshold_used)})
+                </p>
+              </div>
+              <div style={{ width: 140, height: 140 }}>
+                <ResponsiveContainer>
+                  <RadialBarChart
+                    innerRadius="70%"
+                    outerRadius="100%"
+                    data={gauge}
+                    startAngle={180}
+                    endAngle={-180}
+                  >
+                    <RadialBar
+                      minAngle={15}
+                      dataKey="value"
+                      cornerRadius={20}
+                      background
+                      clockWise
+                      fill={neon}
+                    />
+                  </RadialBarChart>
+                </ResponsiveContainer>
               </div>
             </div>
-          ))}
+          </div>
+
+          <div className="glass-card lg:col-span-2">
+            <h3 className="card-title">AI Insights & Explanation</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-white/60 uppercase mb-2">Top Reasons</p>
+                <div className="space-y-2">
+                  {prediction.explanation.top_reasons?.map((r, i) => (
+                    <div key={i} className="reason-box">
+                      <p className="text-sm font-medium text-white">{r.feature}</p>
+                      <p className="text-xs text-white/70 mt-1">
+                        {r.effect === 'increase'
+                          ? '↑ Increased'
+                          : r.effect === 'decrease'
+                          ? '↓ Decreased'
+                          : '• Neutral'}{' '}
+                        impact ({r.contribution.toFixed(2)})
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-white/60 uppercase mb-2">Feature Importance</p>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart layout="vertical" data={barData}>
+                    <XAxis type="number" hide domain={[0, 'dataMax']} />
+                    <Tooltip
+                      wrapperStyle={{
+                        background: '#0b1220',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                      }}
+                      contentStyle={{
+                        background: '#071019',
+                        borderRadius: 6,
+                        color: '#fff',
+                      }}
+                    />
+                    <Bar dataKey="value" barSize={12} radius={[6, 6, 6, 6]}>
+                      {barData.map((_, i) => (
+                        <Cell key={i} fill={i % 2 ? '#A78BFA' : '#7CFFFB'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
         </div>
-        {prediction.notes && (
-          <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-            {prediction.notes}
+
+        {/* Feedback */}
+        {prediction.feedback && prediction.feedback.length > 0 && (
+          <div className="glass-card">
+            <h3 className="card-title">Feedback & Improvements</h3>
+            <div className="space-y-3">
+              {prediction.feedback.map((f, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b border-white/10 pb-2"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-white">{f.feature}</p>
+                    <p className="text-xs text-white/60">{f.explanation}</p>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2 sm:mt-0">
+                    <p className="text-sm text-green-300">
+                      +{formatPercentage(f.estimated_probability_gain)}
+                    </p>
+                    <button
+                      type="button"
+                      className="px-3 py-1 text-xs rounded bg-indigo-600 hover:bg-indigo-700"
+                      onClick={() => setSimulatedProb(f.new_probability_estimate)}
+                    >
+                      Simulate
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -266,133 +242,134 @@ function Predictor() {
   };
 
   return (
-    <div className="px-4 py-6 sm:px-0">
-      <div className="max-w-2xl mx-auto">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Performance Predictor</h2>
+    <div className="min-h-screen bg-[#071021] text-white relative overflow-x-hidden">
+      <div className="max-w-6xl mx-auto px-4 py-8 relative z-10">
+        <header className="text-center mb-8">
+          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
+            Student Performance Predictor
+          </h1>
+          <p className="text-sm text-white/70 mt-2">
+            AI-driven analytics · Futuristic Neon Dashboard
+          </p>
+        </header>
 
-        <div className="bg-white shadow rounded-lg p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="student_id" className="block text-sm font-medium text-gray-700">
-                Student (optional)
-              </label>
+        <form onSubmit={handleSubmit} className="glass-card mb-10">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="z-50 relative">
+              <label className="text-xs text-white/70">Student (optional)</label>
               <select
-                id="student_id"
                 value={selectedStudentId}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSelectedStudentId(value ? Number(value) : '');
-                }}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                onChange={(e) =>
+                  setSelectedStudentId(e.target.value ? Number(e.target.value) : '')
+                }
+                className="neon-input cursor-pointer"
                 disabled={studentsLoading || students.length === 0}
               >
                 <option value="">Select student</option>
-                {students.map((student) => (
-                  <option key={student.student_id} value={student.student_id}>
-                    {student.name}
+                {students.map((s) => (
+                  <option key={s.student_id} value={s.student_id}>
+                    {s.name}
                   </option>
                 ))}
               </select>
             </div>
-            <div>
-              <label htmlFor="attendance" className="block text-sm font-medium text-gray-700">
-                Attendance (%) *
-              </label>
-              <input
-                type="number"
-                id="attendance"
-                name="attendance"
-                min="0"
-                max="100"
-                step="0.1"
-                required
-                value={formData.attendance}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              />
-            </div>
 
-            <div>
-              <label htmlFor="marks" className="block text-sm font-medium text-gray-700">
-                Marks (%) *
-              </label>
-              <input
-                type="number"
-                id="marks"
-                name="marks"
-                min="0"
-                max="100"
-                step="0.1"
-                required
-                value={formData.marks}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              />
-            </div>
+            {['attendance', 'marks', 'internal_score', 'final_exam_score'].map((f) => (
+              <div key={f}>
+                <label className="text-xs text-white/70 capitalize">
+                  {f.replace('_', ' ')} {f !== 'final_exam_score' && '*'}
+                </label>
+                <input
+                  name={f}
+                  value={(formData as any)[f]}
+                  onChange={handleChange}
+                  type="number"
+                  min={0}
+                  max={100}
+                  className="neon-input"
+                  required={f !== 'final_exam_score'}
+                />
+              </div>
+            ))}
+          </div>
 
-            <div>
-              <label htmlFor="internal_score" className="block text-sm font-medium text-gray-700">
-                Internal Score (%) *
-              </label>
-              <input
-                type="number"
-                id="internal_score"
-                name="internal_score"
-                min="0"
-                max="100"
-                step="0.1"
-                required
-                value={formData.internal_score}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              />
-            </div>
+          {error && <div className="mt-4 p-3 rounded bg-red-900/40 text-sm">{error}</div>}
 
-            <div>
-              <label htmlFor="final_exam_score" className="block text-sm font-medium text-gray-700">
-                Final Exam Score (%) (Optional)
-              </label>
-              <input
-                type="number"
-                id="final_exam_score"
-                name="final_exam_score"
-                min="0"
-                max="100"
-                step="0.1"
-                value={formData.final_exam_score}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-              />
-            </div>
+          <div className="mt-6 text-right">
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-gradient"
+            >
+              {loading ? 'Predicting...' : 'Predict Performance'}
+            </button>
+          </div>
+        </form>
 
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-              >
-                {loading ? 'Predicting...' : 'Predict'}
-              </button>
-            </div>
-          </form>
-
-          {error && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-sm text-red-800">{error}</p>
-            </div>
-          )}
-
-          {result && (
-            <>
-              {renderResult(result)}
-              {renderFeedback(result)}
-            </>
-          )}
-        </div>
+        {result ? renderResult(result) : (
+          <div className="text-center text-white/60 p-6">
+            Fill inputs and click Predict to see AI insights
+          </div>
+        )}
       </div>
+
+      <style jsx>{`
+        .glass-card {
+          position: relative;
+          background: rgba(255, 255, 255, 0.05);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 12px;
+          padding: 24px;
+          pointer-events: auto;
+        }
+
+        .card-title {
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: white;
+          margin-bottom: 1rem;
+        }
+
+        .neon-input {
+          margin-top: 6px;
+          width: 100%;
+          padding: 10px 12px;
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: white;
+          transition: all 0.3s ease;
+        }
+        .neon-input:focus {
+          border-color: #7cfffb;
+          box-shadow: 0 0 12px #7cfffb88;
+          outline: none;
+        }
+
+        .reason-box {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
+          padding: 10px 12px;
+        }
+
+        .btn-gradient {
+          padding: 10px 20px;
+          border-radius: 8px;
+          font-weight: 600;
+          background: linear-gradient(90deg, #00f5a0, #00d9f5, #a78bfa);
+          color: #000;
+          transition: 0.3s;
+        }
+        .btn-gradient:hover {
+          transform: scale(1.05);
+          box-shadow: 0 0 15px #7cfffb66;
+        }
+      `}</style>
     </div>
   );
 }
 
 export default Predictor;
-
+  
