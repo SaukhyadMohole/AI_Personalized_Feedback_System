@@ -1,21 +1,20 @@
-import { useState, useEffect } from 'react';
-import { apiClient, RetrainResponse, UpdateThresholdResponse } from '../api';
+import { useState, useEffect } from "react";
+import { apiClient, RetrainResponse, UpdateThresholdResponse } from "../api";
 
 function Admin() {
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [retrainLoading, setRetrainLoading] = useState(false);
   const [retrainResult, setRetrainResult] = useState<RetrainResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [thresholdInfo, setThresholdInfo] = useState<UpdateThresholdResponse | null>(null);
-  const [thresholdInput, setThresholdInput] = useState('0.6');
+  const [thresholdInput, setThresholdInput] = useState("0.6");
   const [thresholdSaving, setThresholdSaving] = useState(false);
   const [thresholdMessage, setThresholdMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check if token exists in localStorage
-    const savedToken = localStorage.getItem('admin_token');
+    const savedToken = localStorage.getItem("admin_token");
     if (savedToken) {
       setToken(savedToken);
       setIsAuthenticated(true);
@@ -26,33 +25,30 @@ function Admin() {
     const fetchThreshold = async () => {
       try {
         const info = await apiClient.getThreshold();
-        setThresholdInfo(info);
-        setThresholdInput(info.threshold.toFixed(2));
+        if (info?.threshold) {
+          setThresholdInfo(info);
+          setThresholdInput(info.threshold.toFixed(2));
+        }
       } catch (err) {
-        console.error(err);
+        console.warn("⚠️ Failed to fetch threshold:", err);
       }
     };
-
-    if (isAuthenticated) {
-      fetchThreshold();
-    } else {
-      setThresholdInfo(null);
-    }
+    if (isAuthenticated) fetchThreshold();
   }, [isAuthenticated]);
 
   const handleLogin = () => {
     if (!token.trim()) {
-      setError('Please enter a token');
+      setError("Please enter a valid admin token.");
       return;
     }
-    localStorage.setItem('admin_token', token);
+    localStorage.setItem("admin_token", token);
     setIsAuthenticated(true);
     setError(null);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    setToken('');
+    localStorage.removeItem("admin_token");
+    setToken("");
     setIsAuthenticated(false);
     setRetrainResult(null);
     setThresholdInfo(null);
@@ -64,12 +60,19 @@ function Admin() {
     setRetrainResult(null);
     try {
       const response = await apiClient.retrain();
+      if (!response) throw new Error("Empty response from retrain API.");
+
       setRetrainResult(response);
-      const appliedThreshold = response.user_threshold ?? response.recommended_threshold;
-      setThresholdInfo({ threshold: appliedThreshold, source: response.user_threshold ? 'metadata:user' : 'metadata:recommended' });
+      const appliedThreshold =
+        response.user_threshold ?? response.recommended_threshold ?? 0.6;
+
+      setThresholdInfo({
+        threshold: appliedThreshold,
+        source: response.user_threshold ? "user" : "recommended",
+      });
       setThresholdInput(appliedThreshold.toFixed(2));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to retrain model');
+      setError(err instanceof Error ? err.message : "Failed to retrain model.");
     } finally {
       setRetrainLoading(false);
     }
@@ -81,15 +84,15 @@ function Admin() {
     try {
       const blob = await apiClient.exportData();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = 'student_data_export.csv';
+      a.download = "student_data_export.csv";
       document.body.appendChild(a);
       a.click();
+      a.remove();
       window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to export data');
+      setError(err instanceof Error ? err.message : "Failed to export data.");
     } finally {
       setExportLoading(false);
     }
@@ -97,8 +100,8 @@ function Admin() {
 
   const handleThresholdSave = async () => {
     const parsed = parseFloat(thresholdInput);
-    if (Number.isNaN(parsed) || parsed <= 0 || parsed >= 1) {
-      setThresholdMessage('Threshold must be a decimal between 0 and 1 (e.g., 0.60).');
+    if (isNaN(parsed) || parsed <= 0 || parsed >= 1) {
+      setThresholdMessage("Threshold must be between 0 and 1 (e.g., 0.65).");
       return;
     }
 
@@ -106,10 +109,16 @@ function Admin() {
     setThresholdMessage(null);
     try {
       const response = await apiClient.updateThreshold(parsed);
-      setThresholdInfo(response);
-      setThresholdMessage('Threshold updated successfully.');
+      if (response?.threshold) {
+        setThresholdInfo(response);
+        setThresholdMessage("✅ Threshold updated successfully.");
+      } else {
+        setThresholdMessage("⚠️ Could not update threshold.");
+      }
     } catch (err) {
-      setThresholdMessage(err instanceof Error ? err.message : 'Failed to update threshold.');
+      setThresholdMessage(
+        err instanceof Error ? err.message : "Failed to update threshold."
+      );
     } finally {
       setThresholdSaving(false);
     }
@@ -117,202 +126,161 @@ function Admin() {
 
   if (!isAuthenticated) {
     return (
-      <div className="px-4 py-6 sm:px-0">
-        <div className="max-w-md mx-auto">
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Admin Login</h2>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="token" className="block text-sm font-medium text-gray-700">
-                  Admin Token
-                </label>
-                <input
-                  type="password"
-                  id="token"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                  placeholder="Enter admin token"
-                />
-              </div>
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-sm text-red-800">{error}</p>
-                </div>
-              )}
-              <button
-                onClick={handleLogin}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                Login
-              </button>
-            </div>
-          </div>
+      <div className="min-h-screen bg-[#0A0F1E] flex items-center justify-center text-white">
+        <div className="backdrop-blur-lg bg-white/10 border border-white/20 rounded-xl p-8 w-full max-w-md shadow-2xl">
+          <h2 className="text-2xl font-bold text-center mb-6 bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
+            Admin Login
+          </h2>
+          <input
+            type="password"
+            placeholder="Enter admin token"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            className="block w-full mb-4 rounded-md bg-white/10 border border-white/20 px-3 py-2 text-white focus:ring-2 focus:ring-cyan-400 outline-none"
+          />
+          {error && <p className="text-sm text-red-400 mb-4 text-center">{error}</p>}
+          <button
+            onClick={handleLogin}
+            className="w-full py-2 rounded-md bg-gradient-to-r from-cyan-400 to-indigo-500 text-black font-semibold hover:scale-105 transition-transform"
+          >
+            Login
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="px-4 py-6 sm:px-0">
-      <div className="max-w-2xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Admin Panel</h2>
+    <div className="min-h-screen bg-[#070E1E] text-white px-4 py-8">
+      <div className="max-w-5xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
+            Admin Dashboard
+          </h2>
           <button
             onClick={handleLogout}
-            className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+            className="px-4 py-2 bg-white/10 border border-white/20 rounded-md hover:bg-white/20"
           >
             Logout
           </button>
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-sm text-red-800">{error}</p>
+          <div className="p-4 bg-red-500/10 border border-red-400/40 rounded-md text-red-300 text-sm">
+            {error}
           </div>
         )}
 
-        <div className="space-y-6">
-          {/* Retrain Model */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Retrain Model</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Retrain the ML model using data from the enrollments table.
-            </p>
-            <button
-              onClick={handleRetrain}
-              disabled={retrainLoading}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {retrainLoading ? 'Training...' : 'Retrain Model'}
-            </button>
+        {/* Retrain Section */}
+        <div className="glass-card">
+          <h3 className="card-title">⚙️ Retrain Model</h3>
+          <p className="text-sm text-white/70 mb-4">
+            Rebuild the ML model using the latest student dataset.
+          </p>
+          <button
+            onClick={handleRetrain}
+            disabled={retrainLoading}
+            className="btn-gradient"
+          >
+            {retrainLoading ? "Training..." : "Retrain Model"}
+          </button>
 
-            {retrainResult && (
-              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-md">
-                <h4 className="font-semibold text-gray-900 mb-2">Training Results</h4>
-                <div className="space-y-1 text-sm">
-                  <div>
-                    <span className="font-medium">Accuracy: </span>
-                    <span>{(retrainResult.accuracy * 100).toFixed(2)}%</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">Precision: </span>
-                    <span>{(retrainResult.precision * 100).toFixed(2)}%</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">Recall: </span>
-                    <span>{(retrainResult.recall * 100).toFixed(2)}%</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">F1 Score: </span>
-                    <span>{(retrainResult.f1_score * 100).toFixed(2)}%</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">ROC AUC: </span>
-                    <span>{(retrainResult.roc_auc * 100).toFixed(2)}%</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">Samples Used: </span>
-                    <span>{retrainResult.samples_used}</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">Model Path: </span>
-                    <span className="font-mono text-xs">{retrainResult.model_path}</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">Timestamp: </span>
-                    <span>{new Date(retrainResult.timestamp).toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <span className="font-medium">Recommended Threshold: </span>
-                    <span>{retrainResult.recommended_threshold.toFixed(2)}</span>
-                  </div>
-                  {typeof retrainResult.user_threshold === 'number' && (
-                    <div>
-                      <span className="font-medium">Saved Threshold: </span>
-                      <span>{retrainResult.user_threshold.toFixed(2)}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Decision Threshold */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Decision Threshold</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Control the probability threshold used to classify a student as pass. A higher threshold reduces false positives.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label htmlFor="threshold" className="block text-sm font-medium text-gray-700">
-                  Threshold (0 &lt; value &lt; 1)
-                </label>
-                <input
-                  id="threshold"
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  max="0.99"
-                  value={thresholdInput}
-                  onChange={(e) => setThresholdInput(e.target.value)}
-                  className="mt-1 block w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                />
-                {thresholdInfo && (
-                  <p className="mt-2 text-xs text-gray-500">
-                    Current applied threshold: <span className="font-semibold">{thresholdInfo.threshold.toFixed(2)}</span>{' '}
-                    (source: {thresholdInfo.source})
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleThresholdSave}
-                  disabled={thresholdSaving}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  {thresholdSaving ? 'Saving...' : 'Save Threshold'}
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900"
-                  onClick={() => {
-                    const value = retrainResult?.recommended_threshold ?? 0.6;
-                    setThresholdInput(value.toFixed(2));
-                  }}
-                >
-                  Use recommended ({(retrainResult?.recommended_threshold ?? 0.6).toFixed(2)})
-                </button>
-              </div>
-              {thresholdMessage && (
-                <div className="text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-3 py-2">
-                  {thresholdMessage}
-                </div>
-              )}
+          {retrainResult && (
+            <div className="mt-6 bg-white/5 border border-white/10 rounded-lg p-4 text-sm space-y-2">
+              <h4 className="font-semibold text-cyan-300">✅ Model Retrained Successfully</h4>
+              <p>Accuracy: {(retrainResult.accuracy * 100).toFixed(2)}%</p>
+              <p>Precision: {(retrainResult.precision * 100).toFixed(2)}%</p>
+              <p>Recall: {(retrainResult.recall * 100).toFixed(2)}%</p>
+              <p>F1 Score: {(retrainResult.f1_score * 100).toFixed(2)}%</p>
+              <p>Samples Used: {retrainResult.samples_used}</p>
+              <p>Threshold: {retrainResult.recommended_threshold?.toFixed(2) ?? "N/A"}</p>
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Export Data */}
-          <div className="bg-white shadow rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Export Data</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Export training-ready CSV from the current database.
-            </p>
+        {/* Threshold Section */}
+        <div className="glass-card">
+          <h3 className="card-title">🎯 Decision Threshold</h3>
+          <p className="text-sm text-white/70 mb-4">
+            Adjust the probability threshold for student classification.
+          </p>
+          <div className="flex items-center gap-3 mb-4">
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              max="0.99"
+              value={thresholdInput}
+              onChange={(e) => setThresholdInput(e.target.value)}
+              className="w-24 px-2 py-1 bg-white/10 border border-white/20 rounded-md focus:ring-2 focus:ring-cyan-400 outline-none"
+            />
             <button
-              onClick={handleExport}
-              disabled={exportLoading}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+              onClick={handleThresholdSave}
+              disabled={thresholdSaving}
+              className="btn-gradient"
             >
-              {exportLoading ? 'Exporting...' : 'Export CSV'}
+              {thresholdSaving ? "Saving..." : "Save Threshold"}
             </button>
           </div>
+          {thresholdInfo && (
+            <p className="text-sm text-white/80">
+              Current: <strong>{thresholdInfo.threshold.toFixed(2)}</strong> (source:{" "}
+              {thresholdInfo.source})
+            </p>
+          )}
+          {thresholdMessage && (
+            <p className="mt-3 text-sm bg-white/10 border border-white/20 rounded-md px-3 py-2 text-cyan-300">
+              {thresholdMessage}
+            </p>
+          )}
+        </div>
+
+        {/* Export Section */}
+        <div className="glass-card">
+          <h3 className="card-title">📊 Export Dataset</h3>
+          <p className="text-sm text-white/70 mb-4">
+            Download student data in CSV format for analysis or backup.
+          </p>
+          <button
+            onClick={handleExport}
+            disabled={exportLoading}
+            className="btn-gradient"
+          >
+            {exportLoading ? "Exporting..." : "Export CSV"}
+          </button>
         </div>
       </div>
+
+      <style jsx>{`
+        .glass-card {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(10px);
+          border-radius: 12px;
+          padding: 24px;
+        }
+        .card-title {
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: #ffffff;
+          margin-bottom: 0.75rem;
+        }
+        .btn-gradient {
+          padding: 8px 18px;
+          border-radius: 8px;
+          font-weight: 600;
+          background: linear-gradient(90deg, #00f5a0, #00d9f5, #a78bfa);
+          color: #000;
+          transition: all 0.3s ease;
+        }
+        .btn-gradient:hover {
+          transform: scale(1.05);
+          box-shadow: 0 0 15px #7cfffb66;
+        }
+      `}</style>
     </div>
   );
 }
 
 export default Admin;
-
