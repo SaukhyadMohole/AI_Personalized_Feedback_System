@@ -38,8 +38,8 @@ function Students() {
     if (student) {
       setEditingStudent(student);
       setFormData({
-        FullName: student.FullName,
-        DepartmentID: student.DepartmentID?.toString() || "",
+        FullName: student.name || student.FullName || "",
+        DepartmentID: (student.dept_id || student.DepartmentID)?.toString() || "",
       });
     } else {
       setEditingStudent(null);
@@ -59,7 +59,7 @@ function Students() {
     setError(null);
     try {
       if (editingStudent) {
-        await apiClient.updateStudent(editingStudent.StudentID, {
+        await apiClient.updateStudent(editingStudent.student_id || editingStudent.StudentID, {
           FullName: formData.FullName,
           DepartmentID: formData.DepartmentID
             ? parseInt(formData.DepartmentID)
@@ -170,15 +170,15 @@ function Students() {
                 <tbody className="divide-y divide-white/10">
                   {students.map((s) => (
                     <tr
-                      key={s.StudentID}
+                      key={s.student_id || s.StudentID}
                       className="hover:bg-white/10 transition-colors duration-150"
                     >
-                      <td className="px-6 py-4">{s.StudentID}</td>
+                      <td className="px-6 py-4">{s.student_id || s.StudentID}</td>
                       <td className="px-6 py-4 font-medium text-white">
-                        {s.FullName}
+                        {s.name || s.FullName}
                       </td>
                       <td className="px-6 py-4 text-white/70">
-                        {s.DepartmentName || s.DepartmentID || "-"}
+                        {s.DepartmentName || s.dept_id || s.DepartmentID || "-"}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
@@ -188,7 +188,7 @@ function Students() {
                           Edit
                         </button>
                         <button
-                          onClick={() => handleDelete(s.StudentID)}
+                          onClick={() => handleDelete(s.student_id || s.StudentID)}
                           className="text-red-400 hover:text-red-300 transition"
                         >
                           Delete

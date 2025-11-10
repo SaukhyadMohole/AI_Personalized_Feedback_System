@@ -133,11 +133,14 @@ function Admin() {
           </h2>
           <input
             type="password"
-            placeholder="Enter admin token"
+            placeholder="Enter admin token (default: changeme)"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            className="block w-full mb-4 rounded-md bg-white/10 border border-white/20 px-3 py-2 text-white focus:ring-2 focus:ring-cyan-400 outline-none"
+            className="block w-full mb-2 rounded-md bg-white/10 border border-white/20 px-3 py-2 text-white focus:ring-2 focus:ring-cyan-400 outline-none"
           />
+          <p className="text-xs text-white/50 mb-4 text-center">
+            Default token: <code className="bg-white/10 px-1 rounded">changeme</code>
+          </p>
           {error && <p className="text-sm text-red-400 mb-4 text-center">{error}</p>}
           <button
             onClick={handleLogin}
