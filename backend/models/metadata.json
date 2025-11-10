@@ -1,5 +1,5 @@
 {
-  "generated_at": "2025-11-07T12:15:27.758171Z",
+  "generated_at": "2025-11-10T05:40:12.642158Z",
   "feature_names": [
     "attendance",
     "marks",
@@ -54,5 +54,7 @@
       10.173167320620129,
       4.623130252689548
     ]
-  }
+  },
+  "user_threshold": 0.7,
+  "user_threshold_set_at": "2025-11-10T05:40:29.885862Z"
 }

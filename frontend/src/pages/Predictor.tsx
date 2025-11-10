@@ -40,9 +40,14 @@ function Predictor(): JSX.Element {
       setStudentsLoading(true);
       try {
         const response = await apiClient.getStudents(1, 100);
-        setStudents(response.items || []);
+        const studentsList = response.items || [];
+        setStudents(studentsList);
+        if (studentsList.length === 0) {
+          console.warn('No students found in database');
+        }
       } catch (err) {
-        console.warn('Failed to load students', err);
+        console.error('Failed to load students', err);
+        setError('Failed to load students. Please check if the backend is running.');
       } finally {
         setStudentsLoading(false);
       }
@@ -206,6 +211,16 @@ function Predictor(): JSX.Element {
           </div>
         </div>
 
+        {/* Detailed Feedback Paragraph */}
+        {prediction.feedback_paragraph && (
+          <div className="glass-card">
+            <h3 className="card-title">Detailed Feedback</h3>
+            <p className="text-sm text-white/90 leading-relaxed whitespace-pre-wrap">
+              {prediction.feedback_paragraph}
+            </p>
+          </div>
+        )}
+
         {/* Feedback */}
         {prediction.feedback && prediction.feedback.length > 0 && (
           <div className="glass-card">
@@ -263,12 +278,14 @@ function Predictor(): JSX.Element {
                   setSelectedStudentId(e.target.value ? Number(e.target.value) : '')
                 }
                 className="neon-input cursor-pointer"
-                disabled={studentsLoading || students.length === 0}
+                disabled={studentsLoading}
               >
-                <option value="">Select student</option>
+                <option value="">
+                  {studentsLoading ? 'Loading students...' : students.length === 0 ? 'No students available' : 'Select student'}
+                </option>
                 {students.map((s) => (
                   <option key={s.student_id} value={s.student_id}>
-                    {s.name}
+                    {s.name || `Student ${s.student_id}`}
                   </option>
                 ))}
               </select>
@@ -338,13 +355,32 @@ function Predictor(): JSX.Element {
           border-radius: 6px;
           background: rgba(255, 255, 255, 0.08);
           border: 1px solid rgba(255, 255, 255, 0.15);
-          color: white;
+          color: white !important;
           transition: all 0.3s ease;
         }
         .neon-input:focus {
           border-color: #7cfffb;
           box-shadow: 0 0 12px #7cfffb88;
           outline: none;
+        }
+        .neon-input option {
+          background: #0b1220 !important;
+          color: white !important;
+          padding: 8px;
+        }
+        .neon-input option:checked {
+          background: rgba(124, 255, 251, 0.3) !important;
+          color: white !important;
+        }
+        .neon-input option:hover {
+          background: rgba(124, 255, 251, 0.2) !important;
+        }
+        select.neon-input {
+          color: white !important;
+          background-color: rgba(255, 255, 255, 0.08) !important;
+        }
+        select.neon-input::-ms-expand {
+          display: block;
         }
 
         .reason-box {
